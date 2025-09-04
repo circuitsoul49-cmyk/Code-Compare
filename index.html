@@ -3,149 +3,399 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple QR Code Scanner</title>
-    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+    <title>DiffDeck - Advanced Text & File Comparison</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsdiff/5.1.0/diff.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f0f2f5;
-            color: #1c1e21;
+            font-family: 'Inter', sans-serif;
+            background-color: #0d1117;
+            color: #c9d1d9;
+        }
+        .fira-code {
+            font-family: 'Fira Code', monospace;
+        }
+        .drop-zone-active {
+            background-color: #161b22;
+            border-color: #2f81f7;
+        }
+        .diff-container pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .line {
             display: flex;
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            margin: 0;
-            height: 100vh;
-        }
-        #scanner-container {
-            width: 90%;
-            max-width: 500px;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-            text-align: center;
-        }
-        h1 {
-            font-size: 1.5em;
-            margin: 1em 0;
-        }
-        #video-container {
-            position: relative;
             width: 100%;
-            /* Maintain a 4:3 aspect ratio for the video container */
-            padding-top: 75%; 
+            padding: 0.1rem 0.5rem;
+            min-height: 24px;
         }
-        video {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover; /* This makes the video fill the container */
+        .line-num {
+            width: 45px;
+            flex-shrink: 0;
+            color: #484f58;
+            text-align: right;
+            padding-right: 1rem;
+            user-select: none;
         }
-        #output {
-            padding: 1em;
-            background-color: #e7f3ff;
-            border-top: 1px solid #cce0f5;
+        .line-content {
+            flex-grow: 1;
         }
-        #output-container {
-            font-weight: bold;
-            color: #0056b3;
-            word-wrap: break-word; /* Wrap long URLs */
+        .line.added { background-color: rgba(34, 134, 58, 0.15); }
+        .line.removed { background-color: rgba(248, 81, 73, 0.15); }
+        .line-content del {
+            background-color: rgba(248, 81, 73, 0.3);
+            text-decoration: none;
         }
-        #output-message {
-            color: #606770;
+        .line-content ins {
+            background-color: rgba(34, 134, 58, 0.3);
+            text-decoration: none;
         }
-        /* This canvas is used for processing but not shown to the user */
-        #qr-canvas {
-            display: none;
+        .placeholder { background-color: #161b22; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: #161b22; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 5px; }
+        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+        /* Loader Animation */
+        .loader {
+            width: 18px;
+            height: 18px;
+            border: 2px solid #fff;
+            border-bottom-color: transparent;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
-<body>
+<body class="transition-colors duration-300">
 
-    <main id="scanner-container">
-        <h1>QR Code Scanner</h1>
-        <div id="video-container">
-            <video id="qr-video"></video>
-        </div>
-        <div id="output">
-            <div id="output-message">Scanning... Point your camera at a QR code.</div>
-            <div id="output-container">
-                <span id="output-data"></span>
+    <div class="min-h-screen flex flex-col items-center p-4 sm:p-6 lg:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl sm:text-5xl font-bold text-white tracking-tight">DiffDeck</h1>
+            <p class="text-lg text-gray-400 mt-2">Compare files and text with precision and speed.</p>
+        </header>
+
+        <!-- Input Section -->
+        <main id="inputSection" class="w-full max-w-7xl transition-opacity duration-500">
+             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Old Version Input -->
+                <div class="bg-[#161b22] border border-gray-700 rounded-lg p-4 flex flex-col">
+                    <h2 class="text-lg font-semibold text-white mb-3">Original</h2>
+                    <div id="dropZoneOld" class="flex-grow flex flex-col border-2 border-dashed border-gray-600 rounded-lg p-4 text-center transition-all duration-300">
+                        <textarea id="textOld" class="w-full flex-grow bg-[#0d1117] rounded-md p-3 fira-code text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Paste original content or drop a file..."></textarea>
+                        <div class="mt-4">
+                             <label for="fileOld" class="cursor-pointer bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Select File</label>
+                             <input type="file" id="fileOld" class="hidden">
+                             <p id="fileNameOld" class="text-gray-500 text-sm mt-2 h-5 truncate"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- New Version Input -->
+                 <div class="bg-[#161b22] border border-gray-700 rounded-lg p-4 flex flex-col">
+                    <h2 class="text-lg font-semibold text-white mb-3">Changed</h2>
+                    <div id="dropZoneNew" class="flex-grow flex flex-col border-2 border-dashed border-gray-600 rounded-lg p-4 text-center transition-all duration-300">
+                        <textarea id="textNew" class="w-full flex-grow bg-[#0d1117] rounded-md p-3 fira-code text-sm resize-none focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Paste changed content or drop a file..."></textarea>
+                        <div class="mt-4">
+                             <label for="fileNew" class="cursor-pointer bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors">Select File</label>
+                             <input type="file" id="fileNew" class="hidden">
+                             <p id="fileNameNew" class="text-gray-500 text-sm mt-2 h-5 truncate"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-center items-center gap-4 mt-6">
+                <button id="clearBtn" class="bg-gray-700 text-white font-bold py-3 px-8 rounded-lg text-lg hover:bg-gray-600 transition-colors">
+                    Clear
+                </button>
+                <button id="compareBtn" class="bg-emerald-600 text-white font-bold py-3 px-8 rounded-lg text-lg hover:bg-emerald-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center gap-2">
+                    <span id="compareBtnText">Compare</span>
+                    <div id="loader" class="loader hidden"></div>
+                </button>
+            </div>
+        </main>
+        
+        <!-- Results Section -->
+        <div id="resultsSection" class="w-full max-w-7xl mt-8 hidden transition-opacity duration-500">
+             <div class="bg-[#161b22] border border-gray-700 rounded-lg p-4">
+                <div class="flex flex-col sm:flex-row justify-between items-center mb-4 pb-4 border-b border-gray-700">
+                    <div class="flex items-center space-x-2 mb-3 sm:mb-0">
+                        <button id="splitViewBtn" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors">Split</button>
+                        <button id="unifiedViewBtn" class="bg-gray-700 text-gray-300 font-semibold py-2 px-4 rounded-md text-sm hover:bg-gray-600 transition-colors">Unified</button>
+                    </div>
+                    <div id="diffStats" class="text-sm font-medium text-center">
+                        <span id="linesAdded" class="text-emerald-400"></span>
+                        <span id="linesRemoved" class="text-red-400 ml-3"></span>
+                    </div>
+                    <button id="newCompareBtn" class="mt-3 sm:mt-0 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-md text-sm transition-colors">New Comparison</button>
+                </div>
+                <div id="diffOutput" class="diff-container fira-code text-sm overflow-x-auto"></div>
             </div>
         </div>
-    </main>
-
-    <canvas id="qr-canvas"></canvas>
+    </div>
 
     <script>
-        const video = document.getElementById("qr-video");
-        const canvasElement = document.getElementById("qr-canvas");
-        const canvas = canvasElement.getContext("2d");
+    // --- Element Selection ---
+    const textOld = document.getElementById('textOld');
+    const textNew = document.getElementById('textNew');
+    const compareBtn = document.getElementById('compareBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const inputSection = document.getElementById('inputSection');
+    const resultsSection = document.getElementById('resultsSection');
+    const diffOutput = document.getElementById('diffOutput');
+    const splitViewBtn = document.getElementById('splitViewBtn');
+    const unifiedViewBtn = document.getElementById('unifiedViewBtn');
+    const newCompareBtn = document.getElementById('newCompareBtn');
+    const linesAddedEl = document.getElementById('linesAdded');
+    const linesRemovedEl = document.getElementById('linesRemoved');
+    const compareBtnText = document.getElementById('compareBtnText');
+    const loader = document.getElementById('loader');
 
-        const outputContainer = document.getElementById("output-container");
-        const outputMessage = document.getElementById("output-message");
-        const outputData = document.getElementById("output-data");
+    let diffResult = null;
+    let currentView = 'split';
 
-        // Use facingMode: "environment" to attempt to get the rear camera on mobile devices
-        const constraints = {
-            audio: false,
-            video: {
-                facingMode: "environment"
-            }
+    // --- Web Worker for Performance ---
+    const workerCode = `
+        self.importScripts('https://cdnjs.cloudflare.com/ajax/libs/jsdiff/5.1.0/diff.min.js');
+        self.onmessage = function(e) {
+            const { oldStr, newStr } = e.data;
+            const diff = Diff.diffLines(oldStr, newStr, { newlineIsToken: true });
+            self.postMessage(diff);
         };
+    `;
+    const blob = new Blob([workerCode], { type: 'application/javascript' });
+    const diffWorker = new Worker(URL.createObjectURL(blob));
 
-        navigator.mediaDevices.getUserMedia(constraints)
-            .then(function(stream) {
-                video.srcObject = stream;
-                video.setAttribute("playsinline", true); // required to tell iOS safari we don't want fullscreen
-                video.play();
-                requestAnimationFrame(tick); // Start scanning
-            })
-            .catch(function(err) {
-                console.error("ERROR: " + err);
-                outputMessage.textContent = "Could not access the camera. Please grant permission.";
-            });
+    // --- Utility Functions ---
+    function setupDropZone(dropZoneId, textElId, fileInputId, fileNameId) {
+        const dropZone = document.getElementById(dropZoneId);
+        const textEl = document.getElementById(textElId);
+        const fileInput = document.getElementById(fileInputId);
+        const fileNameEl = document.getElementById(fileNameId);
 
-        function tick() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                // Set canvas size to match video feed
-                canvasElement.height = video.videoHeight;
-                canvasElement.width = video.videoWidth;
-                
-                // Draw the current video frame to the canvas
-                canvas.drawImage(video, 0, 0, canvasElement.width, canvasElement.height);
-                
-                // Get image data from the canvas
-                const imageData = canvas.getImageData(0, 0, canvasElement.width, canvasElement.height);
-                
-                // Use jsQR to check for a QR code in the image data
-                const code = jsQR(imageData.data, imageData.width, imageData.height, {
-                    inversionAttempts: "dontInvert",
-                });
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation(); }, false));
+        ['dragenter', 'dragover'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.add('drop-zone-active'), false));
+        ['dragleave', 'drop'].forEach(eventName => dropZone.addEventListener(eventName, () => dropZone.classList.remove('drop-zone-active'), false));
 
-                if (code) {
-                    // If a QR code is found, display its data
-                    outputMessage.textContent = "QR Code Detected!";
-                    outputData.textContent = code.data;
-                    
-                    // Optional: Make the data a clickable link if it's a URL
-                    if (code.data.startsWith('http')) {
-                        outputData.innerHTML = `<a href="${code.data}" target="_blank">${code.data}</a>`;
-                    }
-                    
-                } else {
-                    // If no QR code is found, keep the scanning message
-                    if (outputData.textContent === "") {
-                         outputMessage.textContent = "Scanning... Point your camera at a QR code.";
-                    }
-                }
-            }
-            // Continue the scanning loop
-            requestAnimationFrame(tick);
+        dropZone.addEventListener('drop', e => {
+            if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0], textEl, fileNameEl);
+        }, false);
+        
+        fileInput.addEventListener('change', e => {
+             if (e.target.files.length > 0) handleFile(e.target.files[0], textEl, fileNameEl);
+        });
+    }
+
+    function handleFile(file, textEl, fileNameEl) {
+        const reader = new FileReader();
+        reader.onload = e => textEl.value = e.target.result;
+        reader.readAsText(file);
+        fileNameEl.textContent = file.name;
+    }
+    
+    function escapeHtml(str) {
+        return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    // --- Event Listeners ---
+    setupDropZone('dropZoneOld', 'textOld', 'fileOld', 'fileNameOld');
+    setupDropZone('dropZoneNew', 'textNew', 'fileNew', 'fileNameNew');
+
+    compareBtn.addEventListener('click', () => {
+        compareBtn.disabled = true;
+        compareBtnText.textContent = 'Comparing...';
+        loader.classList.remove('hidden');
+
+        diffWorker.postMessage({
+            oldStr: textOld.value,
+            newStr: textNew.value
+        });
+    });
+
+    diffWorker.onmessage = function(e) {
+        diffResult = e.data;
+
+        let addedCount = 0;
+        let removedCount = 0;
+        diffResult.forEach(part => {
+            if (part.added) addedCount += part.count;
+            if (part.removed) removedCount += part.count;
+        });
+
+        linesAddedEl.textContent = `+${addedCount} insertions`;
+        linesRemovedEl.textContent = `-${removedCount} deletions`;
+
+        inputSection.classList.add('opacity-0', 'hidden');
+        resultsSection.classList.remove('hidden');
+        resultsSection.classList.add('opacity-100');
+        renderDiff();
+        
+        compareBtn.disabled = false;
+        compareBtnText.textContent = 'Compare';
+        loader.classList.add('hidden');
+    };
+
+    clearBtn.addEventListener('click', () => {
+        textOld.value = '';
+        textNew.value = '';
+        document.getElementById('fileNameOld').textContent = '';
+        document.getElementById('fileNameNew').textContent = '';
+    });
+    
+    splitViewBtn.addEventListener('click', () => { currentView = 'split'; updateViewButtons(); renderDiff(); });
+    unifiedViewBtn.addEventListener('click', () => { currentView = 'unified'; updateViewButtons(); renderDiff(); });
+    
+    newCompareBtn.addEventListener('click', () => {
+        resultsSection.classList.add('hidden', 'opacity-0');
+        inputSection.classList.remove('hidden');
+        setTimeout(() => inputSection.classList.remove('opacity-0'), 50);
+        diffOutput.innerHTML = '';
+    });
+
+    // --- Rendering Logic ---
+    function updateViewButtons() {
+        const isSplit = currentView === 'split';
+        splitViewBtn.classList.toggle('bg-blue-600', isSplit);
+        splitViewBtn.classList.toggle('text-white', isSplit);
+        splitViewBtn.classList.toggle('bg-gray-700', !isSplit);
+        splitViewBtn.classList.toggle('text-gray-300', !isSplit);
+        unifiedViewBtn.classList.toggle('bg-blue-600', !isSplit);
+        unifiedViewBtn.classList.toggle('text-white', !isSplit);
+        unifiedViewBtn.classList.toggle('bg-gray-700', isSplit);
+        unifiedViewBtn.classList.toggle('text-gray-300', isSplit);
+    }
+    
+    function renderDiff() {
+        if (!diffResult) return;
+        diffOutput.innerHTML = ''; // Clear previous results
+        const fragment = document.createDocumentFragment();
+        
+        if (currentView === 'split') {
+            fragment.appendChild(renderSplitView());
+        } else {
+            fragment.appendChild(renderUnifiedView());
         }
+        diffOutput.appendChild(fragment);
+    }
+    
+    // --- Word-level diffing utility ---
+    function getWordDiff(oldLine, newLine) {
+        const wordDiff = Diff.diffWords(oldLine, newLine);
+        let content = '';
+        wordDiff.forEach(part => {
+            const escapedValue = escapeHtml(part.value);
+            if (part.added) {
+                content += `<ins>${escapedValue}</ins>`;
+            } else if (part.removed) {
+                content += `<del>${escapedValue}</del>`;
+            } else {
+                content += escapedValue;
+            }
+        });
+        return content;
+    }
+    
+    function renderSplitView() {
+        const container = document.createElement('div');
+        container.className = 'grid grid-cols-2 gap-4';
+        const oldPanel = document.createElement('pre');
+        const newPanel = document.createElement('pre');
+        let oldLineNum = 1;
+        let newLineNum = 1;
+
+        for (let i = 0; i < diffResult.length; i++) {
+            const part = diffResult[i];
+            const lines = part.value.split('\n').filter((_,idx,arr) => idx < arr.length - 1 || arr[idx] !== '');
+            
+            if (part.added) {
+                // Check if this is a modification (removed block followed by added block)
+                if (i > 0 && diffResult[i-1].removed) {
+                     // This case is handled by the 'removed' block below, so skip
+                } else {
+                     lines.forEach(line => {
+                        oldPanel.innerHTML += `<div class="line placeholder"><span class="line-num"></span><span class="line-content">&nbsp;</span></div>`;
+                        newPanel.innerHTML += `<div class="line added"><span class="line-num">${newLineNum++}</span><span class="line-content">+ ${escapeHtml(line)}</span></div>`;
+                    });
+                }
+            } else if (part.removed) {
+                // Check for a modification
+                if (i + 1 < diffResult.length && diffResult[i+1].added) {
+                    const removedLines = lines;
+                    const addedLines = diffResult[i+1].value.split('\n').filter((_,idx,arr) => idx < arr.length - 1 || arr[idx] !== '');
+                    const maxLen = Math.max(removedLines.length, addedLines.length);
+
+                    for(let j = 0; j < maxLen; j++) {
+                        const oldLine = removedLines[j];
+                        const newLine = addedLines[j];
+                        
+                        if (oldLine !== undefined && newLine !== undefined) {
+                            const wordDiffContent = getWordDiff(oldLine, newLine);
+                            oldPanel.innerHTML += `<div class="line removed"><span class="line-num">${oldLineNum++}</span><span class="line-content">- ${getWordDiff(oldLine, oldLine)}</span></div>`;
+                            newPanel.innerHTML += `<div class="line added"><span class="line-num">${newLineNum++}</span><span class="line-content">+ ${wordDiffContent}</span></div>`;
+                        } else if (oldLine !== undefined) {
+                            oldPanel.innerHTML += `<div class="line removed"><span class="line-num">${oldLineNum++}</span><span class="line-content">- ${escapeHtml(oldLine)}</span></div>`;
+                            newPanel.innerHTML += `<div class="line placeholder"><span class="line-num"></span><span class="line-content">&nbsp;</span></div>`;
+                        } else if (newLine !== undefined) {
+                             oldPanel.innerHTML += `<div class="line placeholder"><span class="line-num"></span><span class="line-content">&nbsp;</span></div>`;
+                             newPanel.innerHTML += `<div class="line added"><span class="line-num">${newLineNum++}</span><span class="line-content">+ ${escapeHtml(newLine)}</span></div>`;
+                        }
+                    }
+                    i++; // Skip the next 'added' part as it has been processed
+                } else {
+                    lines.forEach(line => {
+                        oldPanel.innerHTML += `<div class="line removed"><span class="line-num">${oldLineNum++}</span><span class="line-content">- ${escapeHtml(line)}</span></div>`;
+                        newPanel.innerHTML += `<div class="line placeholder"><span class="line-num"></span><span class="line-content">&nbsp;</span></div>`;
+                    });
+                }
+            } else {
+                lines.forEach(line => {
+                    oldPanel.innerHTML += `<div class="line"><span class="line-num">${oldLineNum++}</span><span class="line-content">  ${escapeHtml(line)}</span></div>`;
+                    newPanel.innerHTML += `<div class="line"><span class="line-num">${newLineNum++}</span><span class="line-content">  ${escapeHtml(line)}</span></div>`;
+                });
+            }
+        }
+        container.appendChild(oldPanel);
+        container.appendChild(newPanel);
+        return container;
+    }
+        
+    function renderUnifiedView() {
+        const panel = document.createElement('pre');
+        let oldLineNum = 1;
+        let newLineNum = 1;
+
+        diffResult.forEach(part => {
+            const lines = part.value.split('\n').filter((_, i, arr) => i < arr.length - 1 || arr[i] !== '');
+            if (part.added) {
+                lines.forEach(line => {
+                    panel.innerHTML += `<div class="line added"><span class="line-num">${newLineNum++}</span><span class="line-content">+ ${escapeHtml(line)}</span></div>`;
+                });
+            } else if (part.removed) {
+                lines.forEach(line => {
+                    panel.innerHTML += `<div class="line removed"><span class="line-num">${oldLineNum++}</span><span class="line-content">- ${escapeHtml(line)}</span></div>`;
+                });
+            } else {
+                lines.forEach(line => {
+                    panel.innerHTML += `<div class="line"><span class="line-num" style="width: 70px; text-align: left; padding-left: 5px;">${oldLineNum++} ${newLineNum++}</span><span class="line-content">  ${escapeHtml(line)}</span></div>`;
+                });
+            }
+        });
+        return panel;
+    }
+
     </script>
 </body>
 </html>
+
